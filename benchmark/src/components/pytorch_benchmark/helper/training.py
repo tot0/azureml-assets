@@ -44,6 +44,7 @@ from .profiling import get_default_trace_handler
 # non-specific code to help with profiling
 from common.profiling import LogTimeOfIterator
 from common.nvml import get_nvml_params
+from common.netmon import NetmonThread
 
 
 class PyTorchDistributedModelTrainingSequence:
@@ -82,6 +83,9 @@ class PyTorchDistributedModelTrainingSequence:
         # PROFILER
         self.profiler = None
         self.profiler_output_dir = None
+
+        # NETMON
+        self.netmon_thread = None
 
     #####################
     ### SETUP METHODS ###
@@ -195,17 +199,17 @@ class PyTorchDistributedModelTrainingSequence:
                 "cache": False,  # not implemented in PyTorch, but logging for consistency
                 "cpu_count": self.cpu_count,
                 "prefetch_factor": self.dataloading_config.prefetch_factor,
-                "persistent_workers": self.dataloading_config.persistent_workers,
-                "pin_memory": self.dataloading_config.pin_memory,
-                "non_blocking": self.dataloading_config.non_blocking,
-                "multiprocessing_sharing_strategy": self.dataloading_config.multiprocessing_sharing_strategy,
-                # training params
+                #"persistent_workers": self.dataloading_config.persistent_workers,
+                #"pin_memory": self.dataloading_config.pin_memory,
+                #"non_blocking": self.dataloading_config.non_blocking,
+                #"multiprocessing_sharing_strategy": self.dataloading_config.multiprocessing_sharing_strategy,
+                # training paramsstart_profiler
                 "model_arch": self.training_config.model_arch,
-                "model_arch_pretrained": self.training_config.model_arch_pretrained,
+                #"model_arch_pretrained": self.training_config.model_arch_pretrained,
                 "optimizer.learning_rate": self.training_config.learning_rate,
                 "optimizer.momentum": self.training_config.momentum,
                 # profiling params
-                "enable_profiling": self.training_config.enable_profiling,
+                #"enable_profiling": self.training_config.enable_profiling,
                 "cudnn_autotuner": bool(self.training_config.cudnn_autotuner),
             }
 
@@ -214,7 +218,16 @@ class PyTorchDistributedModelTrainingSequence:
                 self.logger.info(f"CUDA: get_gencode_flags() returns: {torch.cuda.get_gencode_flags()}")
                 self.logger.info(f"CUDA: get_arch_list() returns: {torch.cuda.get_arch_list()}")
 
+            # self.logger.info(f'mlflow.log_params: {logged_params}')
+            # self.logger.info(f'enable_profiling: {type(self.training_config.enable_profiling)}')
             mlflow.log_params(logged_params)
+        
+        if self.local_rank == 0:
+            # Start measure_networks in new Thread
+            if self.training_config.enable_netmon:
+                self.logger.info("Starting Netmon Thread")
+                self.netmon_thread = NetmonThread()
+                self.netmon_thread.start()
 
     def setup_datasets(
         self,
@@ -363,11 +376,11 @@ class PyTorchDistributedModelTrainingSequence:
                 self.logger.info("Enabling CUDA in profiler.")
                 activities.append(torch.profiler.ProfilerActivity.CUDA)
 
-            # create a function that will be called every time
+            # # create a function that will be called every time
             # a "trace" is ready (see on_trace_ready)
-            trace_handler = get_default_trace_handler(
-                dir_name=self.profiler_output_dir.name, rank=self.world_rank
-            )
+            # trace_handler = get_default_trace_handler(
+            #     dir_name=self.profiler_output_dir.name, rank=self.world_rank
+            # )
 
             # setup profiler to process every single step
             profiler_schedule = torch.profiler.schedule(wait=0, warmup=0, active=1)
@@ -375,12 +388,12 @@ class PyTorchDistributedModelTrainingSequence:
             # initialize profiler
             self.profiler = torch.profiler.profile(
                 schedule=profiler_schedule,
-                record_shapes=True,
+                record_shapes=False,#True,
                 with_flops=True,
-                profile_memory=True,
+                profile_memory=False,#True,
                 activities=activities,
-                with_stack=True,  # needed to export stacks
-                on_trace_ready=trace_handler,
+                with_stack=False,#True,  # needed to export stacks
+                #on_trace_ready=trace_handler, # on_trace_ready=torch.profiler.tensorboard_trace_handler(dir_name)
             )
             self.profiler.start()
 
@@ -695,6 +708,8 @@ class PyTorchDistributedModelTrainingSequence:
 
     def close(self):
         """Tear down potential resources"""
+        if self.netmon_thread:
+            self.netmon_thread.stop()
         if self.multinode_available:
             self.logger.info(
                 f"Destroying process group on local_rank={self.local_rank} rank={self.world_rank} size={self.world_size}"

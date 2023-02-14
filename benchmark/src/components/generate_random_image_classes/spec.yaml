@@ -44,13 +44,10 @@ environment: azureml:AzureML-sklearn-1.0-ubuntu20.04-py38-cpu:11
 
 command: >-
   python run.py 
-
   --classes ${{inputs.classes}}
   --train_samples ${{inputs.train_samples}}
   --valid_samples ${{inputs.valid_samples}}
-
   --width ${{inputs.width}}
   --height ${{inputs.height}}
-
   --output_train ${{outputs.output_train}}
   --output_valid ${{outputs.output_valid}}

@@ -317,6 +317,13 @@ def build_arguments_parser(parser: argparse.ArgumentParser = None):
         help="Enable pytorch profiler.",
     )
     group.add_argument(
+        "--enable_netmon",
+        type=strtobool,
+        required=False,
+        default=False,
+        help="Enable network monitor thread.",
+    )
+    group.add_argument(
         "--multiprocessing_sharing_strategy",
         type=str,
         choices=torch.multiprocessing.get_all_sharing_strategies(),
@@ -345,6 +352,10 @@ def main(cli_args=None):
     )
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
+    # Filter out ArmHttpLoggingPolicy logs at INFO level
+    logging.getLogger(
+        "azure.core.pipeline.policies.http_logging_policy"
+    ).setLevel(logging.WARNING)
 
     # create argument parser
     parser = build_arguments_parser()

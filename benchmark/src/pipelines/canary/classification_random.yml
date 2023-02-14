@@ -10,7 +10,7 @@ jobs:
   generate:
     type: command
     component: file:../../components/generate_random_image_classes/spec.yaml
-    compute: azureml:cpu-cluster
+    compute: azureml:lupickup-cpu
     inputs:
       classes: 4
       train_samples: 100
@@ -20,13 +20,13 @@ jobs:
 
   train:
     type: command
-    component: file:../../components/pytorch_benchmark/image_classification_spec.yaml
-    compute: azureml:gpu-cluster
+    component: file:../../components/pytorch_benchmark/image_classifier_spec.yaml
+    compute: azureml:lupickup-8v100-low
     resources:
       instance_count: 1 # number of nodes
     distribution:
       type: pytorch
-      process_count_per_instance: 1 # number of gpus
+      process_count_per_instance: 8 # number of gpus
 
     inputs:
       train_images: ${{parent.jobs.generate.outputs.output_train}}
@@ -36,4 +36,5 @@ jobs:
       num_workers: 5
       prefetch_factor: 4
       enable_profiling: false
+      enable_netmon: true
 # </jobs>
